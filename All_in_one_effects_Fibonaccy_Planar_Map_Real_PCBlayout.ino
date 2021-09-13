@@ -38,7 +38,7 @@
 
 #include <FastLED.h>
 #include <JC_Button.h>
-
+#include <TaskScheduler.h>
 
 #define FULL_DMA_BUFFER
 #include <I2SClocklessLedDriver.h>
@@ -59,12 +59,23 @@
 
 #define MAX_POWER_MILLIAMPS 800  //write here your power in milliamps. default i set 800 mA for safety
 #define BUTTON_PIN 39
+#define TASK_CHECK_BUTTON_PRESS_INTERVAL    5   // in milliseconds
+
+
+void checkButtonPress();
+void nextPattern();
+void runGPattern();
 
 I2SClocklessLedDriver _driver;
 
 CRGB leds [257];
 byte rain[NUM_LEDS_PLANAR];  //need for digital rain effect
 Button nextPatternButton(BUTTON_PIN);
+
+Scheduler userScheduler;
+Task taskCheckButtonPress( TASK_CHECK_BUTTON_PRESS_INTERVAL, TASK_FOREVER, &checkButtonPress);
+Task taskAutoAdvance(30 * TASK_SECOND, TASK_FOREVER, &nextPattern);
+Task taskRunPattern(5, TASK_FOREVER, &runGPattern);
 
 
 static const uint16_t FibonPlanarTable[] PROGMEM ={    //lookup table for planar mapping on fibonacci layout
@@ -177,7 +188,14 @@ void setup() {
   _driver.initled((uint8_t*)leds,pins,1,NUM_LEDS_PLANAR,ORDER_GRB);
   _driver.setBrightness(BRIGHTNESS);
 
-    nextPatternButton.begin();
+   nextPatternButton.begin();
+   userScheduler.init();
+   userScheduler.addTask( taskCheckButtonPress );
+   userScheduler.addTask( taskAutoAdvance );
+   userScheduler.addTask( taskRunPattern );
+   taskCheckButtonPress.enable();
+   taskAutoAdvance.enable();
+   taskRunPattern.enable();
 
 //   FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, 256)
 //   .setCorrection( TypicalLEDStrip );
@@ -191,41 +209,38 @@ void setup() {
 typedef void (*SimplePatternList[])();
 SimplePatternList gPatterns =     // this is list of patterns
 {
-SpriteScroll,
-Fire2021_Cilindrical, CilindricalSwirl, RGB_Caleidoscope2, RGB_Caleidoscope1,
-Fire_Tunnel, Cilindrical_Pattern, DiagonalPatternCilindr, FireButterfly,     
-Spirals_Swirl,
-fire2021, RGBTunnel, metaballs,
-DigitalRain, SinPattern, F_lying,
-DiagonalPattern
+   SpriteScroll,
+   Fire2021_Cilindrical, CilindricalSwirl, RGB_Caleidoscope2, RGB_Caleidoscope1,
+   Fire_Tunnel, Cilindrical_Pattern, DiagonalPatternCilindr, FireButterfly,     
+   Spirals_Swirl,
+   fire2021, RGBTunnel, metaballs,
+   DigitalRain, SinPattern, F_lying,
+   DiagonalPattern
 }; 
 
 void loop() {
-EVERY_N_SECONDS( 30 ) // speed of change patterns periodically
-{
-// FadeOut (150);        // fade out current effect
-gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE(gPatterns); //next effect
-InitNeeded=1; //flag if init something need
-Serial.println(gCurrentPatternNumber);
-// FadeIn (150);        // fade in current effect
-} 
+   userScheduler.execute();
+}
 
-gPatterns[gCurrentPatternNumber]();
+void runGPattern() {
+   gPatterns[gCurrentPatternNumber]();
+   _driver.showPixels();
+}
 
-// _driver.transposeAll();
-_driver.showPixels();
+void checkButtonPress() {
+   nextPatternButton.read();
+   if( nextPatternButton.wasPressed()) {
+      nextPattern();
+      taskAutoAdvance.delay(0); // display the pattern at least 
+   }
+}
 
-nextPatternButton.read();
-if( nextPatternButton.wasPressed()) {
+void nextPattern() {
    gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE(gPatterns); //next effect
+   InitNeeded=1; //flag if init something need
    Serial.println(gCurrentPatternNumber);
 }
 
-
-// _driver.showPixelsFirstTranpose();
-
-// FastLED.show();  
-} // main cycle
 
 //_____________________________________ effects for cilindrical layout
 
