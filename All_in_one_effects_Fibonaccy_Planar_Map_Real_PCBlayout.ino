@@ -37,8 +37,13 @@
 //remap planar table. Now planar effects is not rotated.
 
 #include <FastLED.h>
+#include <JC_Button.h>
 
-#define DATA_PIN    3                //set your datapin
+
+#define FULL_DMA_BUFFER
+#include <I2SClocklessLedDriver.h>
+
+#define DATA_PIN    26                //set your datapin
 #define LED_TYPE    WS2812B          //leds type
 #define COLOR_ORDER GRB              //color order of leds
 
@@ -53,9 +58,14 @@
 #define NUM_LEDS_CILINDR NUM_ROWS_CILINDR* NUM_COLS_CILINDR //not used yet. in future
 
 #define MAX_POWER_MILLIAMPS 800  //write here your power in milliamps. default i set 800 mA for safety
+#define BUTTON_PIN 39
+
+I2SClocklessLedDriver _driver;
 
 CRGB leds [257];
 byte rain[NUM_LEDS_PLANAR];  //need for digital rain effect
+Button nextPatternButton(BUTTON_PIN);
+
 
 static const uint16_t FibonPlanarTable[] PROGMEM ={    //lookup table for planar mapping on fibonacci layout
 256, 256, 256, 256, 256, 256, 256, 256, 183, 205, 206, 207, 256, 256, 256, 256, 256, 256, 256, 256, 
@@ -156,16 +166,24 @@ const uint32_t sprite4 [] PROGMEM = {   //19x45
 
 uint8_t gCurrentPatternNumber =0; // Index number of which pattern is current
 uint8_t InitNeeded = 1;           //global variable for effects initial needed
-byte BRIGHTNESS = 110;      // for me good bright about 100-120, don't turn leds in full brightness long time! it may overheat
+byte BRIGHTNESS = 32;      // for me good bright about 100-120, don't turn leds in full brightness long time! it may overheat
 
+
+float speed = 1.0;
 
 void setup() {
-  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, 256)
-  .setCorrection( TypicalLEDStrip );
-  FastLED.setMaxPowerInVoltsAndMilliamps( 5, MAX_POWER_MILLIAMPS);   
-  FastLED.setBrightness(BRIGHTNESS);
-  FastLED.clear();
-  FadeIn (150); 
+   Serial.begin(115200);
+   int pins[1]={DATA_PIN};
+  _driver.initled((uint8_t*)leds,pins,1,NUM_LEDS_PLANAR,ORDER_GRB);
+  _driver.setBrightness(BRIGHTNESS);
+
+    nextPatternButton.begin();
+
+//   FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, 256)
+//   .setCorrection( TypicalLEDStrip );
+//   FastLED.setMaxPowerInVoltsAndMilliamps( 5, MAX_POWER_MILLIAMPS);   
+//   FastLED.setBrightness(BRIGHTNESS);
+  
 }
 
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
@@ -185,15 +203,28 @@ DiagonalPattern
 void loop() {
 EVERY_N_SECONDS( 30 ) // speed of change patterns periodically
 {
-FadeOut (150);        // fade out current effect
+// FadeOut (150);        // fade out current effect
 gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE(gPatterns); //next effect
 InitNeeded=1; //flag if init something need
-FadeIn (150);        // fade in current effect
+Serial.println(gCurrentPatternNumber);
+// FadeIn (150);        // fade in current effect
 } 
 
 gPatterns[gCurrentPatternNumber]();
 
-FastLED.show();  
+// _driver.transposeAll();
+_driver.showPixels();
+
+nextPatternButton.read();
+if( nextPatternButton.wasPressed()) {
+   gCurrentPatternNumber = (gCurrentPatternNumber + 1) % ARRAY_SIZE(gPatterns); //next effect
+   Serial.println(gCurrentPatternNumber);
+}
+
+
+// _driver.showPixelsFirstTranpose();
+
+// FastLED.show();  
 } // main cycle
 
 //_____________________________________ effects for cilindrical layout
@@ -220,7 +251,7 @@ GammaCorrection();
 //CilindricalSwirl_____________________________________
 
 void CilindricalSwirl() {
-uint16_t  a = millis()/4;
+uint16_t  a = millis()/(4 * speed);
 
 for (int j = 0; j < NUM_ROWS_CILINDR; j++) {
    for (int i = 0; i < NUM_COLS_CILINDR; i++) {
@@ -232,7 +263,7 @@ if (index!=256) leds[index].setHue(i*24+(sin8(j*16+a))>>1);
 //FireButterfly_____________________________________
 
 void FireButterfly() {
-uint16_t  a = millis()/2;
+uint16_t  a = millis()/(2 * speed);
 
 for (int j = 0; j < NUM_ROWS_CILINDR; j++) {
    for (int i = 0; i < NUM_COLS_CILINDR; i++) {
@@ -244,7 +275,7 @@ if (index!=256) leds[index]=HeatColor(qsub8 (inoise8 (i * 80+a , j * 5+ a , a /3
 //DiagonalPatternCilindr_____________________________________
 
 void DiagonalPatternCilindr() {
-uint16_t  a = millis()/4;
+uint16_t  a = millis()/(4 * speed);
 
 for (int j = 0; j < NUM_ROWS_CILINDR; j++) {
    for (int i = 0; i < NUM_COLS_CILINDR; i++) {
@@ -256,7 +287,7 @@ if (index!=256) leds[index].setHue (i*16+j*16+a);
 //Fire2021_Cilindrical_____________________________________
 
 void Fire2021_Cilindrical() {
-uint16_t  a = millis()/2;
+uint16_t  a = millis()/(2  * speed);
 
 for (int j = 0; j < NUM_ROWS_CILINDR; j++) {
    for (int i = 0; i < NUM_COLS_CILINDR; i++) {
@@ -268,7 +299,7 @@ if (index!=256) leds[index]= HeatColor(qsub8 (inoise8 (i * 80 , j * 40+ a , a /3
 //Cilindrical_Pattern_____________________________________
 
 void Cilindrical_Pattern() {
-uint16_t  a = millis()/10;
+uint16_t  a = millis()/(10 * speed);
 
 for (int j = 0; j < NUM_ROWS_CILINDR; j++) {
    for (int i = 0; i < NUM_COLS_CILINDR; i++) {
@@ -281,7 +312,7 @@ GammaCorrection();
 //Fire_Tunnel_____________________________________
 
 void Fire_Tunnel() {
-uint16_t  a = millis()/2;
+uint16_t  a = millis()/(2 * speed);
 
 for (int j = 0; j < NUM_ROWS_CILINDR; j++) {
    for (int i = 0; i < NUM_COLS_CILINDR; i++) {
@@ -293,7 +324,7 @@ if (index!=256) leds[index]= HeatColor(inoise8(i*50+a,j*40+a));
 //RGB_Caleidoscope1_____________________________________
 
 void RGB_Caleidoscope1() {
-uint16_t  a = millis()/8;
+uint16_t  a = millis()/(8  * speed);
 
 for (int j = 0; j < NUM_ROWS_CILINDR; j++) {
    for (int i = 0; i < NUM_COLS_CILINDR; i++) {
@@ -307,7 +338,7 @@ GammaCorrection();
 //RGB_Caleidoscope2_____________________________________
 
 void RGB_Caleidoscope2() {
-uint16_t  a = millis()/8;
+uint16_t  a = millis()/(8 * speed);
 
 for (int j = 0; j < NUM_ROWS_CILINDR; j++) {
    for (int i = 0; i < NUM_COLS_CILINDR; i++) {
@@ -324,7 +355,7 @@ GammaCorrection();
 
 void Spirals_Swirl() {
 
-uint16_t  a = millis()/6;
+uint16_t  a = millis()/(6 * speed);
 
 for (int j = 0; j < NUM_ROWS_SPIRALS; j++) {
    for (int i = 0; i < NUM_COLS_SPIRALS; i++) {
@@ -338,7 +369,7 @@ for (int j = 0; j < NUM_ROWS_SPIRALS; j++) {
 //fire2021_____________________________________
 
 void fire2021 () {
-int  a = millis();
+int  a = millis()/(1*speed);
 int  a1 = a/2;
 uint16_t index=0;
 for (byte j = 0; j < NUM_ROWS_PLANAR; j++) { 
@@ -388,7 +419,7 @@ void metaballs() {
       sum = qadd8(sum, dist(i, j, bx4, by4));
       sum = qadd8(sum, dist(i, j, bx5, by5));
       int index= XY_fibon(i, j);
-     if(index!=256) leds[XY_fibon(i, j)] =  ColorFromPalette(HeatColors_p , qsub8(sum, 100), BRIGHTNESS);
+     if(index!=256) leds[XY_fibon(i, j)] =  ColorFromPalette(HeatColors_p , qsub8(sum, 100), 255);
     }
   }
 }
@@ -440,7 +471,7 @@ speed ++;
 //SinPattern_____________________________________
 
 void SinPattern() {
-int  a = millis();
+int  a = millis()/(1 * speed);
 int index=0;
 
 for (byte j = 0; j < NUM_ROWS_PLANAR; j++) { 
@@ -469,7 +500,7 @@ byte y3 = beatsin8 (15, 0, (NUM_ROWS_PLANAR-1));
 byte y4 = beatsin8 (27, 0, (NUM_ROWS_PLANAR-1));
 byte y5 = beatsin8 (30, 0, (NUM_ROWS_PLANAR-1));
 
-CRGB color = CHSV (hue,255,BRIGHTNESS);
+CRGB color = CHSV (hue,255,255);
 
 fadeToBlackBy (leds,256, 40 );
 
@@ -502,7 +533,7 @@ if (dot) {     //add white point at the ends of line
 //DiagonalPattern_____________________________________
 
 void DiagonalPattern() {
- uint16_t ms = millis();
+ uint16_t ms = millis()/(1 * speed);
  int index=0;
 
 for (byte j = 0; j < NUM_ROWS_PLANAR; j++) { 
